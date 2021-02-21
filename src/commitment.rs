@@ -15,9 +15,17 @@ where
     created_by: u32,
   ) -> Result<Self, String>;
   /// Add purchase to a customer commitment
-  fn add_purchase(&mut self, commitment_id: Uuid, purchase: PurchaseInfo) -> Result<&Self, String>;
+  fn add_purchase(
+    &mut self,
+    commitment_id: Uuid,
+    purchase: PurchaseInfo,
+  ) -> Result<&Commitment, String>;
   /// Remove purchase from all customer commitment
-  fn remove_purchase(&mut self, commitment_id: Uuid, purchase_id: &Uuid) -> Result<&Self, String>;
+  fn remove_purchase(
+    &mut self,
+    commitment_id: Uuid,
+    purchase_id: &Uuid,
+  ) -> Result<&Commitment, String>;
   /// Add new commitment
   fn add_commitment(
     &mut self,
@@ -29,8 +37,12 @@ where
   fn has_commitment(&self, commitment_id: &Uuid) -> bool;
   /// Try to get commitment as mut ref
   fn get_commitment(&mut self, commitment_id: &Uuid) -> Result<&mut Commitment, String>;
+  /// Return Some(&Self) if there is active commitment
+  fn get_active_commitment(&self) -> Option<&Commitment>;
   /// Return Some(&mut Self) if there is active commitment
-  fn get_active_commitment(&mut self) -> Option<&mut Commitment>;
+  fn get_active_commitment_mut(&mut self) -> Option<&mut Commitment>;
+  /// Has active commitment
+  fn has_active_commitment(&self) -> bool;
 }
 
 pub trait CommitmentExt
@@ -38,7 +50,12 @@ where
   Self: Sized,
 {
   /// Try to create new commitment
-  fn new(target: u32, discount_percentage: u32, created_by: u32) -> Result<Self, String>;
+  fn new(
+    customer_id: u32,
+    target: u32,
+    discount_percentage: u32,
+    created_by: u32,
+  ) -> Result<Self, String>;
   /// Try withdrawn a commitment
   /// Don't forget to add new commitment to the customers commitments
   fn withdraw(
@@ -53,14 +70,14 @@ where
   fn remove_purchase(&mut self, purchase_id: &Uuid) -> Result<&Self, String>;
   /// true if time and withdraw ok
   fn is_active(&self) -> bool;
+  /// true if withdrawn
+  fn is_withdrawn(&self) -> bool;
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Customer {
   pub customer_id: u32,
   pub commitments: Vec<Commitment>,
-  pub created_at: DateTime<Utc>,
-  pub created_by: u32,
 }
 
 impl Default for Customer {
@@ -68,8 +85,6 @@ impl Default for Customer {
     Self {
       customer_id: 0,
       commitments: Vec::default(),
-      created_at: Utc::now(),
-      created_by: 0,
     }
   }
 }
@@ -91,24 +106,31 @@ impl CustomerExt for Customer {
   ) -> Result<Self, String> {
     Ok(Self {
       customer_id,
-      commitments: vec![Commitment::new(target, discount_percentage, created_by)?],
-      created_at: Utc::now(),
-      created_by,
+      commitments: vec![Commitment::new(
+        customer_id,
+        target,
+        discount_percentage,
+        created_by,
+      )?],
     })
   }
 
-  fn add_purchase(&mut self, commitment_id: Uuid, purchase: PurchaseInfo) -> Result<&Self, String> {
+  fn add_purchase(
+    &mut self,
+    commitment_id: Uuid,
+    purchase: PurchaseInfo,
+  ) -> Result<&Commitment, String> {
     // Check if commitment ID is under the customer
     if !self.has_commitment(&commitment_id) {
       return Err("A megadott commitment ID nem szerepel a vásárlónál!".to_string());
     }
     // Check if the required commitment is active
-    match self.get_active_commitment() {
+    match self.get_active_commitment_mut() {
       Some(active_commitment) => match active_commitment.commitment_id == commitment_id {
         // If active_commitment is the required one
         true => {
-          let _ = active_commitment.add_purchase(purchase);
-          return Ok(self);
+          let c = active_commitment.add_purchase(purchase)?;
+          return Ok(c);
         }
         // If active commitment is not the required one
         false => return Err("A megadott commitment helyett már van újabb.".to_string()),
@@ -120,7 +142,11 @@ impl CustomerExt for Customer {
     }
   }
 
-  fn remove_purchase(&mut self, commitment_id: Uuid, purchase_id: &Uuid) -> Result<&Self, String> {
+  fn remove_purchase(
+    &mut self,
+    commitment_id: Uuid,
+    purchase_id: &Uuid,
+  ) -> Result<&Commitment, String> {
     // Try to get the required commitment
     let commitment = self.get_commitment(&commitment_id)?;
     // Try to remove the required purchase
@@ -130,9 +156,9 @@ impl CustomerExt for Customer {
       // and return self ref
       CommitmentStatus::Valid => {
         // Remove purchase
-        commitment.remove_purchase(purchase_id)?;
+        let c = commitment.remove_purchase(purchase_id)?;
         // Return self ref
-        Ok(self)
+        Ok(c)
       }
       // If its a withdrawn commitment
       // then remove the required purchase and recursively remove
@@ -155,7 +181,7 @@ impl CustomerExt for Customer {
   ) -> Result<&Self, String> {
     // Check whether we have an active to withdraw
     // or simple create a new one
-    match self.get_active_commitment() {
+    match self.get_active_commitment_mut() {
       // If we have Some(active_commitment) then
       // try to withdraw it and add the new commitment
       Some(active_commitment) => {
@@ -171,6 +197,7 @@ impl CustomerExt for Customer {
       // as there is no active commitment
       None => {
         self.commitments.push(Commitment::new(
+          self.customer_id,
           new_target,
           new_discount_percentage,
           created_by,
@@ -180,7 +207,21 @@ impl CustomerExt for Customer {
     }
   }
 
-  fn get_active_commitment(&mut self) -> Option<&mut Commitment> {
+  fn get_active_commitment(&self) -> Option<&Commitment> {
+    // If there is any commitment
+    if let Some(last) = self.commitments.last() {
+      // Check if last is active
+      return match last.is_active() {
+        // Return mut ref if yes
+        true => Some(last),
+        // None if last is not active
+        false => None,
+      };
+    }
+    None
+  }
+
+  fn get_active_commitment_mut(&mut self) -> Option<&mut Commitment> {
     // If there is any commitment
     if let Some(last) = self.commitments.last_mut() {
       // Check if last is active
@@ -209,6 +250,13 @@ impl CustomerExt for Customer {
     }
     Err("A megadott commitment ID nem található a vásárló alatt.".to_string())
   }
+
+  fn has_active_commitment(&self) -> bool {
+    match self.get_active_commitment() {
+      Some(_) => true,
+      None => false,
+    }
+  }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -230,6 +278,7 @@ impl Default for CommitmentStatus {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Commitment {
   pub commitment_id: Uuid,             // Unique ID
+  pub customer_id: u32,                // Customer ID
   pub target: u32,                     // Target total purchase value
   pub discount_percentage: u32,        // Valid discount percentage
   pub valid_till: DateTime<Utc>,       // Commitment is valid till
@@ -244,6 +293,7 @@ impl Default for Commitment {
   fn default() -> Self {
     Self {
       commitment_id: Uuid::default(),
+      customer_id: 0,
       target: 0,
       discount_percentage: 0,
       valid_till: Utc::now(),
@@ -257,7 +307,12 @@ impl Default for Commitment {
 }
 
 impl CommitmentExt for Commitment {
-  fn new(target: u32, discount_percentage: u32, created_by: u32) -> Result<Self, String> {
+  fn new(
+    customer_id: u32,
+    target: u32,
+    discount_percentage: u32,
+    created_by: u32,
+  ) -> Result<Self, String> {
     match discount_percentage {
       x if x <= 6 => {
         // Define the next calendar year 1st of january.
@@ -265,6 +320,7 @@ impl CommitmentExt for Commitment {
         // Build the new Commitment Object
         Ok(Self {
           commitment_id: Uuid::new_v4(),
+          customer_id,
           target,
           discount_percentage,
           valid_till: DateTime::from_utc(valid_till_naive, Utc),
@@ -286,7 +342,12 @@ impl CommitmentExt for Commitment {
     created_by: u32,
   ) -> Result<Self, String> {
     // Try create new Commitment
-    let mut new_commitment = Self::new(new_target, new_discount_percentage, created_by)?;
+    let mut new_commitment = Self::new(
+      self.customer_id,
+      new_target,
+      new_discount_percentage,
+      created_by,
+    )?;
     // Set its status to be Withdrawn
     self.status = CommitmentStatus::Withdrawn {
       // Set successor ID to the new commitments' one
@@ -340,6 +401,13 @@ impl CommitmentExt for Commitment {
       CommitmentStatus::Withdrawn { successor: _ } => false,
     }
   }
+
+  fn is_withdrawn(&self) -> bool {
+    match self.status {
+      CommitmentStatus::Valid => false,
+      CommitmentStatus::Withdrawn { successor: _ } => true,
+    }
+  }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -388,22 +456,22 @@ mod tests {
 
   #[test]
   fn test_commitment_percentage() {
-    assert!(Commitment::new(1000, 0, 0).is_ok());
-    assert!(Commitment::new(1000, 1, 0).is_ok());
-    assert!(Commitment::new(1000, 2, 0).is_ok());
-    assert!(Commitment::new(1000, 3, 0).is_ok());
-    assert!(Commitment::new(1000, 4, 0).is_ok());
-    assert!(Commitment::new(1000, 5, 0).is_ok());
-    assert!(Commitment::new(1000, 6, 0).is_ok());
-    assert!(Commitment::new(1000, 7, 0).is_err());
-    assert!(Commitment::new(1000, 8, 0).is_err());
-    assert!(Commitment::new(1000, 9, 0).is_err());
+    assert!(Commitment::new(0, 1000, 0, 0).is_ok());
+    assert!(Commitment::new(0, 1000, 1, 0).is_ok());
+    assert!(Commitment::new(0, 1000, 2, 0).is_ok());
+    assert!(Commitment::new(0, 1000, 3, 0).is_ok());
+    assert!(Commitment::new(0, 1000, 4, 0).is_ok());
+    assert!(Commitment::new(0, 1000, 5, 0).is_ok());
+    assert!(Commitment::new(0, 1000, 6, 0).is_ok());
+    assert!(Commitment::new(0, 1000, 7, 0).is_err());
+    assert!(Commitment::new(0, 1000, 8, 0).is_err());
+    assert!(Commitment::new(0, 1000, 9, 0).is_err());
   }
 
   #[test]
   fn test_commitment_withdraw() {
     // Should be ok
-    let mut c = Commitment::new(1000, 2, 0).unwrap();
+    let mut c = Commitment::new(0, 1000, 2, 0).unwrap();
 
     // Should be err
     assert!(c.remove_purchase(&Uuid::default()).is_err());
