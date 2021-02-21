@@ -1,4 +1,4 @@
 data/
 target/
-!target/release/loyalty_microservice
+!target/release/commitment_microservice
 Cargo.lock

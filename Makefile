@@ -3,7 +3,7 @@
 release:
 	cargo update
 	cargo build --release
-	strip target/release/loyalty_microservice
+	strip target/release/commitment_microservice
 
 build:
 	cargo update
