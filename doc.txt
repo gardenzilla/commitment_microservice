@@ -1,0 +1,43 @@
+Business logic description
+--
+
+  We can create commitment to any given customer ID, by providing
+target amount value and given discount percentage.
+
+  Each commitment has a valid date interval, currently the current
+calendar year. E.g. creating a commitment as YYYY-03-14 has a valid
+date interval till YYYY-12-31 23:59:59.
+
+  Target or discount percentage cannot be updated, neither the
+commitment can be removed. To update the commitment details, we need
+to create a new commitment to the given customer ID. This will
+WITHDRAW the current commitment, by setting its status to withdrawn;
+creating a new commitment with the given new details, and copying
+the current balance and its purchase_log into the new one.
+
+  So commitment in a calendar year is a kind of continuous.
+
+  Commitment balance is calculated by the added or removed purchase
+details. Purchase can be added only to an active commitment; but
+purchase can be removed from a withdrawn commitment; and this action
+will remove it from all of its successors as well.
+
+  Removing a purchase from a commitment means logical removal. The
+given purchase info will be presented under the related commitments,
+but with a removed status flag.
+
+  Each commitment has a calculated status: is active. This status
+is true, when the commitment is not withdrawn and its date interval
+is valid. Otherwise its not active, and cannot be used.
+
+  Valid discount percentages:
+
+  0%
+  1%
+  2%
+  3%
+  4%
+  5%
+  6%
+
+  Other values will cause an error return.

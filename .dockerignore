@@ -1,0 +1,4 @@
+data/
+target/
+!target/release/loyalty_microservice
+Cargo.lock

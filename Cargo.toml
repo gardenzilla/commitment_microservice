@@ -1,0 +1,18 @@
+[package]
+authors = ["Peter Mezei <mezeipetister@gmail.com>"]
+edition = "2018"
+name = "commitment_microservice"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = {version = "0.4", features = ["serde"]}
+gzlib = "*"
+packman = "*"
+prost = "0.6"
+rand = "*"
+serde = {version = "1.0", features = ["derive"]}
+tokio = {version = "0.2", features = ["full"]}
+tonic = "0.3"
+uuid = {version = "0.8", features = ["serde", "v4"]}
