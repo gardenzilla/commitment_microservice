@@ -262,6 +262,7 @@ impl CommitmentExt for Commitment {
       x if x <= 6 => {
         // Define the next calendar year 1st of january.
         let valid_till_naive = NaiveDate::from_ymd(Utc::today().year() + 1, 1, 1).and_hms(0, 0, 0);
+        // Build the new Commitment Object
         Ok(Self {
           commitment_id: Uuid::new_v4(),
           target,
@@ -288,6 +289,7 @@ impl CommitmentExt for Commitment {
     let mut new_commitment = Self::new(new_target, new_discount_percentage, created_by)?;
     // Set its status to be Withdrawn
     self.status = CommitmentStatus::Withdrawn {
+      // Set successor ID to the new commitments' one
       successor: new_commitment.commitment_id.clone(),
     };
     // Set balance

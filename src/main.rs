@@ -1,11 +1,18 @@
-use std::collections::HashMap;
+use packman::VecPack;
+use tokio::sync::Mutex;
 
 mod commitment;
 
-type CustomerId = u32;
+struct CommitmentService {
+  commitments: Mutex<VecPack<commitment::Customer>>,
+}
 
-struct Commitments {
-  customer_commitments: HashMap<CustomerId, Vec<commitment::Commitment>>,
+impl CommitmentService {
+  fn init(commitments: VecPack<commitment::Customer>) -> Self {
+    Self {
+      commitments: Mutex::new(commitments),
+    }
+  }
 }
 
 fn main() {}
