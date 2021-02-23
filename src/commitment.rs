@@ -36,7 +36,9 @@ where
   /// Check whether customer has a given commitment ID
   fn has_commitment(&self, commitment_id: &Uuid) -> bool;
   /// Try to get commitment as mut ref
-  fn get_commitment(&mut self, commitment_id: &Uuid) -> Result<&mut Commitment, String>;
+  fn get_commitment(&self, commitment_id: &Uuid) -> Result<&Commitment, String>;
+  /// Try to get commitment as mut ref
+  fn get_commitment_mut(&mut self, commitment_id: &Uuid) -> Result<&mut Commitment, String>;
   /// Return Some(&Self) if there is active commitment
   fn get_active_commitment(&self) -> Option<&Commitment>;
   /// Return Some(&mut Self) if there is active commitment
@@ -148,15 +150,17 @@ impl CustomerExt for Customer {
     purchase_id: &Uuid,
   ) -> Result<&Commitment, String> {
     // Try to get the required commitment
-    let commitment = self.get_commitment(&commitment_id)?;
+    let commitment_status = self.get_commitment(&commitment_id)?.status.clone();
     // Try to remove the required purchase
-    match commitment.status {
+    match commitment_status {
       // If its a valid commitment
       // simply remove the required purchase
       // and return self ref
       CommitmentStatus::Valid => {
         // Remove purchase
-        let c = commitment.remove_purchase(purchase_id)?;
+        let c = self
+          .get_commitment_mut(&commitment_id)?
+          .remove_purchase(purchase_id)?;
         // Return self ref
         Ok(c)
       }
@@ -165,7 +169,9 @@ impl CustomerExt for Customer {
       // from all of its successors
       CommitmentStatus::Withdrawn { successor } => {
         // Remove purchase from this withdrawn commitment
-        let _ = commitment.remove_purchase(purchase_id);
+        let _ = self
+          .get_commitment_mut(&commitment_id)?
+          .remove_purchase(purchase_id);
         // And recursively remove from all of its
         // successors
         self.remove_purchase(successor, purchase_id)
@@ -242,7 +248,16 @@ impl CustomerExt for Customer {
       .any(|c| c.commitment_id == *commitment_id)
   }
 
-  fn get_commitment(&mut self, commitment_id: &Uuid) -> Result<&mut Commitment, String> {
+  fn get_commitment(&self, commitment_id: &Uuid) -> Result<&Commitment, String> {
+    for c in &self.commitments {
+      if c.commitment_id == *commitment_id {
+        return Ok(c);
+      }
+    }
+    Err("A megadott commitment ID nem található a vásárló alatt.".to_string())
+  }
+
+  fn get_commitment_mut(&mut self, commitment_id: &Uuid) -> Result<&mut Commitment, String> {
     for c in &mut self.commitments {
       if c.commitment_id == *commitment_id {
         return Ok(c);
