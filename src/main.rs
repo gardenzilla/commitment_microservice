@@ -15,6 +15,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::{env, str::FromStr};
 use tokio::sync::{oneshot, Mutex};
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status};
 use uuid::Uuid;
 
@@ -207,7 +208,7 @@ impl Commitment for CommitmentService {
     Ok(Response::new(res))
   }
 
-  type HasActiveCommitmentBulkStream = tokio::sync::mpsc::Receiver<Result<CommitmentInfo, Status>>;
+  type HasActiveCommitmentBulkStream = ReceiverStream<Result<CommitmentInfo, Status>>;
 
   async fn has_active_commitment_bulk(
     &self,
@@ -229,7 +230,7 @@ impl Commitment for CommitmentService {
     });
 
     // Send back the receiver
-    Ok(Response::new(rx))
+    Ok(Response::new(ReceiverStream::new(rx)))
   }
 
   async fn add_purchase(
